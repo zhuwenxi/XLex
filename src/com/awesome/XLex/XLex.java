@@ -8,6 +8,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
+import com.awesome.regexp.DeterministicFiniteAutomata;
 import com.awesome.regexp.FiniteAutomata;
 import com.awesome.regexp.FiniteAutomataState;
 import com.awesome.regexp.InputSymbol;
@@ -22,7 +23,7 @@ public class XLex {
 		new TokenRule("[_a-zA-Z][_a-zA-Z0-9]*", TokenType.VARIABLE),
 	};
 	
-	private static int stateCount;
+	private static int stateCount = 0;
 	
 	private static Map<FiniteAutomataState, TokenRule> stateDict = new HashMap<FiniteAutomataState, TokenRule>();
 	
@@ -64,15 +65,16 @@ public class XLex {
 	 * Set up a automata for retrieving token from input stream.
 	 */
 	private static FiniteAutomata setupAutomata() {
-		FiniteAutomata nfa = buildNfa();
+		FiniteAutomata nfa = buildDfa();
 		return null;
 	}
 	
 	/*
-	 * Build NFA ( non-deterministic automata ) according to token-rules their pattern.
+	 * Build DFA ( deterministic automata ) according to token-rules their pattern.
 	 */
-	private static FiniteAutomata buildNfa() {
+	private static FiniteAutomata buildDfa() {
 		FiniteAutomata nfa = null;
+		FiniteAutomata dfa = null;
 		
 		// Create a NFA array for holding NFA for each of the rule.
 		TokenRule[] rules = XLex.rules;
@@ -85,29 +87,48 @@ public class XLex {
 			nfaArray[i] = new Regexp(pattern).getNfa();
 		}
 		
-		renameNfaStates(nfaArray);
+		TwoStageHashMap<FiniteAutomataState, InputSymbol, FiniteAutomataState> newTransDiag = renameNfaStates(nfaArray);
 		markAcceptState(nfaArray);
 		
 		// Convert all NFAs to one big NFA.
-		nfa = allToOne(nfaArray);
+//		com.awesome.regexp.Config.DFA_VERBOSE = true;
+//		com.awesome.regexp.Config.DFA_BASIC = true;
+//		com.awesome.regexp.Config.DFA_RENAME_STATE = true;
+		
+		nfa = allToOne(nfaArray, newTransDiag);
+		nfa.transDiag = newTransDiag;
+		Logger.tprint(true, nfa.start, "Big NFA start");
+		Logger.tprint(true, nfa.end, "Big NFA end");
+		Logger.tprint(true, nfa.transDiag, "NFA transDiag");
+		// Convert NFA to DFA.
+		dfa = new DeterministicFiniteAutomata(nfa, false);
+		Logger.tprint(true, dfa.transDiag, "DFA transDiag");
+		Logger.tprint(true, dfa.states, "DFA states");
 		return nfa;
 	}
 	
 	/*
 	 * Rename all states in nfaArray, to ensure they could have unique names in the coming big NFA. 
 	 */
-	private static void renameNfaStates(FiniteAutomata[] nfaArray) {
+	private static TwoStageHashMap<FiniteAutomataState, InputSymbol, FiniteAutomataState> renameNfaStates(FiniteAutomata[] nfaArray) {
+		TwoStageHashMap<FiniteAutomataState, InputSymbol, FiniteAutomataState> newTransDiag = new TwoStageHashMap<FiniteAutomataState, InputSymbol, FiniteAutomataState>(); 
 		for (int i = 0; i < nfaArray.length; i ++) {
 			FiniteAutomata nfa = nfaArray[i];
+			Logger.tprint(true, nfa.transDiag, "origin nfa.transDiag");
+			Logger.tprint(true, nfa.states, "origin nfa.states");
 			
 			for (FiniteAutomataState state : nfa.states) {
-				updateTransDiag(state,stateCount, nfa);
+				updateTransDiag(state,stateCount, nfa, newTransDiag);
 				stateCount ++;
 			}
 			
-			Logger.println(true, nfa.transDiag);
-//			Logger.tprint(true, nfa.states, "states");
+			Logger.tprint(true, nfa.transDiag, "nfa.transDiag");
+			Logger.tprint(true, nfa.states, "states");
+			Logger.tprint(true, nfa.transDiag.getL1KeySet(), "L1 Keyset");
 		}
+		
+		return newTransDiag;
+		
 	}
 	
 	private static void markAcceptState(FiniteAutomata[] nfaArray) {
@@ -129,10 +150,11 @@ public class XLex {
 	/*
 	 * Convert all NFAs to one single NFA, with epsilon closures.
 	 */
-	private static FiniteAutomata allToOne(FiniteAutomata[] nfaArray) {
+	private static FiniteAutomata allToOne(FiniteAutomata[] nfaArray, TwoStageHashMap<FiniteAutomataState, InputSymbol, FiniteAutomataState> transDiag) {
 		FiniteAutomata bigNfa = new FiniteAutomata();
 		FiniteAutomataState startState = new FiniteAutomataState(stateCount);
 		List<FiniteAutomataState> nfaStartStates = new ArrayList<FiniteAutomataState>();
+		bigNfa.transDiag = transDiag;
 		
 		//
 		// Merge all transform diagrams into one.
@@ -156,6 +178,7 @@ public class XLex {
 				
 				// Collect start state.
 				if (state == nfa.start) {
+					Logger.tprint(true, state, "nfa.start");
 					nfaStartStates.add(state);
 				}
 			}
@@ -177,7 +200,7 @@ public class XLex {
 		}
 		
 		Logger.tprint(true, bigNfa.transDiag, "big NFA");
-		
+		Logger.tprint(true, bigNfa.states, "big NFA states");
 		
 		return bigNfa;
 	}
@@ -199,7 +222,7 @@ public class XLex {
 	 * Logger.println(searchV);  // print "null"
 	 * 
 	 */
-	private static void updateTransDiag(FiniteAutomataState originState, int newStateNumber, FiniteAutomata nfa) {
+	private static void updateTransDiag(FiniteAutomataState originState, int newStateNumber, FiniteAutomata nfa, TwoStageHashMap<FiniteAutomataState, InputSymbol, FiniteAutomataState> newTransDiag) {
 		TwoStageHashMap<FiniteAutomataState, InputSymbol, FiniteAutomataState> transDiag = nfa.transDiag;
 		Map<InputSymbol, List<FiniteAutomataState>> secondStageHashMap = transDiag.impl.get(originState);
 		
@@ -213,8 +236,18 @@ public class XLex {
 				
 			// Put (newState, symbol, targetStates)
 			originState.stateNumber = newStateNumber;
-			transDiag.impl.put(originState, secondStageHashMap);
+//			Logger.println(true, secondStageHashMap);
+//			transDiag.impl.put(originState, secondStageHashMap);
+			newTransDiag.impl.put(originState, secondStageHashMap);
+		} else if (originState.isAcceptState) {
+			//
+			// Need special treatment to the accept state, since it could has no edge connect to other states.
+			//
+			originState.stateNumber = newStateNumber;
 		}
+		
+		
+		
 	}
 	
 }
