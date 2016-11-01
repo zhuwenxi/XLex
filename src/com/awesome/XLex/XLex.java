@@ -1,6 +1,6 @@
 package com.awesome.XLex;
 
-import java.io.FileInputStream;
+import java.io.FileReader;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -32,6 +32,11 @@ public class XLex {
 	}
 		
 	private static char[] buffer = new char[1024];
+	private static int bufferSize = -1;
+	private static int bufferCursor = 0;
+	private static FileReader fileReader = null;
+	
+	private FiniteAutomata dfa;
 	
 	public XLex() {
 	}
@@ -41,16 +46,15 @@ public class XLex {
 	}
 	
 	public XLex(String filename) {
-		
-	}
-	
-	public Token[] getTokenStream(String filename) {
-		try (FileInputStream fis = new FileInputStream(filename)) {
-			
-		} catch (IOException ioe) {
-			
+		try {
+			fileReader = new FileReader(filename);
+		} catch(IOException ioe) {
+			ioe.printStackTrace();
+			return;
 		}
-		return null;
+		
+		// Read first 1024 char into buffer
+		readBuffer();
 	}
 	
 	public Token getToken() {
@@ -58,14 +62,41 @@ public class XLex {
 	}
 	
 	public char nextChar() {
-		return 0;
+		char next;
+		if (bufferCursor < bufferSize) {
+			next = buffer[bufferCursor];
+			bufferCursor ++;
+			return next;
+		} else {
+			boolean meetFileEnd = readBuffer();
+			if (meetFileEnd) {
+				return 0;
+			} else {
+				return nextChar();
+			}
+		}
+	}
+	
+	private boolean readBuffer() {
+		try {
+			bufferSize = fileReader.read(buffer);
+			
+			if (bufferSize > 0) {
+				return true;
+			} else {
+				return false;
+			}
+		} catch (IOException ioe) {
+			ioe.printStackTrace();
+			return false;
+		}
 	}
 	
 	/*
 	 * Set up a automata for retrieving token from input stream.
 	 */
 	private static FiniteAutomata setupAutomata() {
-		FiniteAutomata nfa = buildDfa();
+		FiniteAutomata dfa = buildDfa();
 		return null;
 	}
 	
@@ -104,7 +135,7 @@ public class XLex {
 		dfa = new DeterministicFiniteAutomata(nfa, false);
 		Logger.tprint(true, dfa.transDiag, "DFA transDiag");
 		Logger.tprint(true, dfa.states, "DFA states");
-		return nfa;
+		return dfa;
 	}
 	
 	/*

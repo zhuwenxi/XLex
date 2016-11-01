@@ -4,10 +4,9 @@ import com.awesome.XLex.XLex;
 public class Main {
 
 	public static void main(String[] args) {
+		String filename = "./Test/main.c";
 		XLex xlex = new XLex();
-		Token[] tokenStream = xlex.getTokenStream("./Test/main.c");
 //		File file = new File(".");
-//		Logger.println(file.getAbsolutePath());
 	}
 
 }
