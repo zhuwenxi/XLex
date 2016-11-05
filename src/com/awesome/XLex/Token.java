@@ -15,6 +15,23 @@ public class Token {
 		this(null, TokenType.UNKNOWN, null);
 	}
 	
+	public String getName() {
+		return this.name;
+	}
+	
+	public String getPattern() {
+		return this.pattern;
+	}
+	
+	public TokenType getType() {
+		return this.type;
+	}
+	
+	@Override
+	public String toString() {
+		return name + " (" + type.name() + ")               " + pattern;
+	}
+	
 }
 
 enum TokenType {

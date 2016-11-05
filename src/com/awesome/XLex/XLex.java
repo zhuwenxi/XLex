@@ -7,12 +7,14 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.Stack;
 
 import com.awesome.regexp.DeterministicFiniteAutomata;
 import com.awesome.regexp.FiniteAutomata;
 import com.awesome.regexp.FiniteAutomataState;
 import com.awesome.regexp.InputSymbol;
 import com.awesome.regexp.Logger;
+import com.awesome.regexp.ProductionToken;
 import com.awesome.regexp.Regexp;
 import com.awesome.regexp.util.TwoStageHashMap;
 
@@ -21,6 +23,8 @@ public class XLex {
 	private final static TokenRule[] rules = {
 		new TokenRule("[0-9]+", TokenType.NUM),
 		new TokenRule("[_a-zA-Z][_a-zA-Z0-9]*", TokenType.VARIABLE),
+//		new TokenRule("1|2", TokenType.NUM),
+//		new TokenRule("in*", TokenType.VARIABLE),
 	};
 	
 	private static int stateCount = 0;
@@ -36,7 +40,7 @@ public class XLex {
 	private static int bufferCursor = 0;
 	private static FileReader fileReader = null;
 	
-	private FiniteAutomata dfa;
+	private static FiniteAutomata dfa;
 	
 	public XLex() {
 	}
@@ -57,24 +61,111 @@ public class XLex {
 		readBuffer();
 	}
 	
-	public Token getToken() {
-		return null;
+	/*
+	 * Get token stream, with the DFA we constructed.
+	 */
+	public List<Token> getTokens() {
+		List<Token> tokens = null;
+		
+		Token next = getToken();
+		while (next != null) {
+			if (tokens == null) {
+				tokens = new ArrayList<Token>();
+			}
+			
+			tokens.add(next);
+			
+			next = getToken();
+		}
+		
+		return tokens;
 	}
 	
-	public char nextChar() {
+	public Token getToken() {
+		Token token = null;
+		String tokenName = "";
+		
+		char next = 'a';
+		InputSymbol ch = null;
+		
+		FiniteAutomataState currentState = null;
+		FiniteAutomataState acceptState = null;
+		
+		boolean meetAccept = false;
+		
+		// Init a stack to hold states.
+		Stack<FiniteAutomataState> stack = new Stack<FiniteAutomataState>();
+		
+		// Pop the top element of the stack, set it as current state.
+		currentState = dfa.start;
+		
+		while (currentState != null && next != 0) {
+			if (currentState.isAcceptState) {
+				meetAccept = true;
+			}
+			
+			// Get next char from buffer.
+			next = getChar();
+			ch = new InputSymbol(next, ProductionToken.ch);
+			
+			// Transfor to next state.
+			List<FiniteAutomataState> currentStates = dfa.transDiag.query(currentState, ch);
+			currentState = currentStates != null ? currentStates.get(0) : null;
+			
+			// Push current state into stack, and grow token name.
+			stack.push(currentState);
+			tokenName += next;
+			
+			if (currentState == null && !meetAccept) {
+				stack.clear();
+				tokenName = "";
+				currentState = dfa.start;
+			}
+		}
+		
+		// Error recovery, trace back to find the accept state.
+		boolean foundAccept = false;
+		while (!stack.isEmpty()) {
+			FiniteAutomataState lastState = stack.pop();
+			
+			if (lastState != null && lastState.isAcceptState) {
+				foundAccept = true;
+				acceptState = lastState;
+				break;
+			} else {
+				ungetChar();
+				if (tokenName.length() > 0) {
+					tokenName = tokenName.substring(0, tokenName.length() - 1);
+				}
+			}
+		}
+		
+		// Decide if the any token found.
+		if (foundAccept) {
+			token = new Token(tokenName, getTokenType(acceptState.regexp), acceptState.regexp);
+		} 
+		
+		return token;
+	}
+		
+	public char getChar() {
 		char next;
 		if (bufferCursor < bufferSize) {
 			next = buffer[bufferCursor];
 			bufferCursor ++;
 			return next;
 		} else {
-			boolean meetFileEnd = readBuffer();
-			if (meetFileEnd) {
+			boolean hasContent = readBuffer();
+			if (!hasContent) {
 				return 0;
 			} else {
-				return nextChar();
+				return getChar();
 			}
 		}
+	}
+	
+	public void ungetChar() {
+		bufferCursor --;
 	}
 	
 	private boolean readBuffer() {
@@ -93,10 +184,23 @@ public class XLex {
 	}
 	
 	/*
+	 * Get token type from it's regexp.
+	 */
+	private TokenType getTokenType(String regexp) {
+		for (TokenRule rule : rules) {
+			if (regexp.equals(rule.pattern)) {
+				return rule.tokenType;
+			}
+		}
+		
+		return TokenType.UNKNOWN;
+	}
+	
+	/*
 	 * Set up a automata for retrieving token from input stream.
 	 */
 	private static FiniteAutomata setupAutomata() {
-		FiniteAutomata dfa = buildDfa();
+		dfa = buildDfa();
 		return null;
 	}
 	
@@ -130,7 +234,6 @@ public class XLex {
 		nfa.transDiag = newTransDiag;
 		Logger.tprint(true, nfa.start, "Big NFA start");
 		Logger.tprint(true, nfa.end, "Big NFA end");
-		Logger.tprint(true, nfa.transDiag, "NFA transDiag");
 		// Convert NFA to DFA.
 		dfa = new DeterministicFiniteAutomata(nfa, false);
 		Logger.tprint(true, dfa.transDiag, "DFA transDiag");
@@ -153,9 +256,7 @@ public class XLex {
 				stateCount ++;
 			}
 			
-			Logger.tprint(true, nfa.transDiag, "nfa.transDiag");
 			Logger.tprint(true, nfa.states, "states");
-			Logger.tprint(true, nfa.transDiag.getL1KeySet(), "L1 Keyset");
 		}
 		
 		return newTransDiag;
@@ -209,7 +310,6 @@ public class XLex {
 				
 				// Collect start state.
 				if (state == nfa.start) {
-					Logger.tprint(true, state, "nfa.start");
 					nfaStartStates.add(state);
 				}
 			}
