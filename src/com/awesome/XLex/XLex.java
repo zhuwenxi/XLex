@@ -23,8 +23,23 @@ public class XLex {
 	private final static TokenRule[] rules = {
 		new TokenRule("[0-9]+", TokenType.NUM),
 		new TokenRule("[_a-zA-Z][_a-zA-Z0-9]*", TokenType.VARIABLE),
-//		new TokenRule("1|2", TokenType.NUM),
-//		new TokenRule("in*", TokenType.VARIABLE),
+		new TokenRule("#[a-zA-Z][_a-zA-Z0-9]*", TokenType.INCLUDE_OP),
+		new TokenRule("<[_a-zA-Z][_a-zA-Z0-9]*.[a-zA-Z0-9]+>", TokenType.SYSTEM_PATH),
+		new TokenRule("{", TokenType.LEFT_BRACE),
+		new TokenRule("}", TokenType.RIGHT_BRACE),
+		new TokenRule(";", TokenType.SEMICOLON),
+		new TokenRule("-", TokenType.MINUS),
+		new TokenRule("=", TokenType.ASSIGN),
+		new TokenRule("(", TokenType.LEFT_PARENTHESIS),
+//		new TokenRule(")", TokenType.RIGHT_PARENTHESIS),
+		
+		
+		/*
+		 * Test tokens here.
+		 */
+		
+//		new TokenRule("<stdio>", TokenType.NUM),
+//		new TokenRule("stdio", TokenType.VARIABLE),
 	};
 	
 	private static int stateCount = 0;
@@ -35,7 +50,7 @@ public class XLex {
 		setupAutomata();
 	}
 		
-	private static char[] buffer = new char[1024];
+	private static char[] buffer = new char[1024 * 1024]; // Fix me. Currently I just read in the whole file, into this 1024 * 1024 buffer.
 	private static int bufferSize = -1;
 	private static int bufferCursor = 0;
 	private static FileReader fileReader = null;
@@ -85,6 +100,7 @@ public class XLex {
 		Token token = null;
 		String tokenName = "";
 		
+		// This 'a' is a placeholder, no specific meaning.
 		char next = 'a';
 		InputSymbol ch = null;
 		
@@ -98,11 +114,14 @@ public class XLex {
 		
 		// Pop the top element of the stack, set it as current state.
 		currentState = dfa.start;
+		stack.push(currentState);
 		
 		while (currentState != null && next != 0) {
 			if (currentState.isAcceptState) {
 				meetAccept = true;
 			}
+			
+			
 			
 			// Get next char from buffer.
 			next = getChar();
@@ -116,10 +135,20 @@ public class XLex {
 			stack.push(currentState);
 			tokenName += next;
 			
+			
 			if (currentState == null && !meetAccept) {
-				stack.clear();
+				while (stack.size() != 1) {
+					stack.pop();
+					ungetChar();
+				}
+				stack.pop();
+				
+				// IMPORTANT! roll back, but not to the first char, instead, second char.
+				getChar();
+				
 				tokenName = "";
 				currentState = dfa.start;
+				stack.push(currentState);
 			}
 		}
 		

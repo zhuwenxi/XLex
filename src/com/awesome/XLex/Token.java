@@ -29,7 +29,7 @@ public class Token {
 	
 	@Override
 	public String toString() {
-		return name + " (" + type.name() + ")               " + pattern;
+		return name + "       (" + type.name() + ")               " + pattern;
 	}
 	
 }
@@ -63,9 +63,24 @@ enum TokenType {
 	LESS_EQUAL_THAN,
 	
 	//
+	// Special symbol:
+	//
+	LEFT_BRACE,
+	RIGHT_BRACE,
+	LEFT_PARENTHESIS,
+	RIGHT_PARENTHESIS,
+	SEMICOLON,
+	
+	//
 	// Assignment operator:
 	//
 	ASSIGN,
+	
+	// 
+	// Pre-process operator:
+	//
+	INCLUDE_OP,
+	SYSTEM_PATH,
 	
 	//
 	// Default Token type:
